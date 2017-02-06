@@ -16,7 +16,9 @@ using System.Collections.Generic;
 using System.Xml;
 using System.Text;
 using System.IO;
+using System.Linq;
 using System.Xml.Serialization;
+using Esri.ArcGISRuntime;
 
 namespace WpfControlLibrary
 {
@@ -101,90 +103,62 @@ namespace WpfControlLibrary
         {
             try
             {
-                var syncContect = SynchronizationContext.Current;
+                var context = SynchronizationContext.Current;
                 // show the status controls
                 StatusPanel.Visibility = Visibility.Visible;
                 StatusMessagesList.Items.Add("Requesting tile cache ...");
 
                 // cancel if an earlier call was made
-                if (_cancellationTokenSource != null)
-                {
-                    _cancellationTokenSource.Cancel();
-                }
+                _cancellationTokenSource?.Cancel();
 
                 // get a cancellation token for this task
                 _cancellationTokenSource = new CancellationTokenSource();
-                var cancelToken = _cancellationTokenSource.Token;
+                var cancelToken = _cancellationTokenSource.Token;             
                
                 // create a new ExportTileCacheTask to generate the tiles
                 var exportTilesTask = ExportTileCacheTask.CreateAsync(new Uri(basemapUrl)).Result;
                 //// define options for the new tiles (extent, scale levels, format
                 var exportTileCacheParams =  exportTilesTask.CreateDefaultExportTileCacheParametersAsync(MyMapView.VisibleArea, 6000000.0, 1.0).Result;
-                //var creationProgress = new Progress<ExportTileCacheJob>(p =>
-                //{
-                //    StatusMessagesList.Items.Clear();
-                //    foreach (var m in p.Messages)
-                //    {
-                //        // find messages with percent complete
-                //        // "Finished:: 9 percent", e.g.
-                //        if (m.Message.Contains("Finished::"))
-                //        {
-                //            // parse out the percentage complete and update the progress bar
-                //            var numString = m.Message.Substring(m.Message.IndexOf("::") + 2, 3).Trim();
-                //            var pct = 0.0;
-                //            if (double.TryParse(numString, out pct))
-                //            {
-                //                 StatusProgressBar.Value = pct;
-                //            }
-                //        }
-                //        else
-                //        {
-                //            // show other status messages in the list
-                //            StatusMessagesList.Items.Add(m.Message);
-                //        }
-                //    }
-                //});
-
+             
                 // download the tile package to the app's local folder
                 var outFolder = System.AppDomain.CurrentDomain.BaseDirectory;
 
-                // show download progress 
-                //var downloadProgress = new Progress<ExportTileCacheTask>(p =>
-                //{
-                //    StatusProgressBar.Value = p.
-                //});
-
-                var job = exportTilesTask.ExportTileCache(exportTileCacheParams, outFolder + "asdf.tpk" );
+                var job =  exportTilesTask.ExportTileCache(exportTileCacheParams, outFolder + "asdf.tpk" );
                 job.JobChanged += (s, e) =>
                 {
-                    if (job.Status == Esri.ArcGISRuntime.Tasks.JobStatus.Succeeded)
+                    switch (job.Status)
                     {
+                        case Esri.ArcGISRuntime.Tasks.JobStatus.Succeeded:
+                            context.Post(AddMessageToList, new Tuple<string, double>("Synchronization is complete!", 100));
+                            break;
 
-                        syncContect.Post(AddToList, "Synchronization is complete!");
-                          
-                       // StatusMessagesList.Items.Add("Synchronization is complete!");
+                        // StatusMessagesList.Items.Add("Synchronization is complete!");
+                        case Esri.ArcGISRuntime.Tasks.JobStatus.Failed:
+                            context.Post(AddMessageToList, new Tuple<string, double>(job.Error.Message, 0));
+                            break;
+                        default:
+                            var magn = 0.0;
+                            foreach (var jobMessage in job.Messages)
+                            {
+                                if (jobMessage.Message.Contains("Finished::"))
+                                {
+                                    // parse out the percentage complete and update the progress bar
+                                    var numString = jobMessage.Message.Substring(jobMessage.Message.IndexOf("::") + 2, 3).Trim();
+                                    var pct = 0.0;
+                                    if (double.TryParse(numString, out pct))
+                                    {
+                                        magn = pct;
+                                    }
+                                }
+                            }
 
-                    }
-                    else if (job.Status == Esri.ArcGISRuntime.Tasks.JobStatus.Failed)
-                    {
-                        // report failure ...    
-                        //Task.Factory.StartNew(() =>
-                        //{
-                        //    StatusMessagesList.Items.Add(job.Error.Message);
-                        //});
-                    }
-                    else
-                    {
-                        //Task.Factory.StartNew(() =>
-                        //{
-                        //    StatusMessagesList.Items.Add("Sync in progress ...");
-                        //});
+                            context.Post(AddMessageToList, new Tuple<string, double>("Sync in progress ..." + magn + "%", magn));
+                            break;
                     }
 
                 };
                // report changes in the job status
                 var result = await job.GetResultAsync();
-
             }
             catch (Exception exp)
             {
@@ -195,16 +169,16 @@ namespace WpfControlLibrary
             {
                 // reset the progress indicator
                 StatusProgressBar.Value = 0;
-                StatusMessagesList.Items.Clear();
-                StatusMessagesList.Items.Add("Local tiles created at " + this.localTileCachePath);
+                StatusMessagesList.Items.Add(string.Format("Local tiles created at: {0}", this.localTileCachePath));
             }
         }
 
-    
-
-        public void AddToList(object v)
+        private void AddMessageToList(object v)
         {
-            StatusMessagesList.Items.Add(v);
+            var tuple = (Tuple<string, double>) v;
+            StatusMessagesList.Items.Clear();
+            StatusMessagesList.Items.Add(tuple.Item1);
+            StatusProgressBar.Value = tuple.Item2;
         }
 
         private async void GetFeatures(object sender, RoutedEventArgs e)
