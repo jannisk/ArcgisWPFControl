@@ -7,18 +7,12 @@ using Esri.ArcGISRuntime.UI.Controls;
 using Esri.ArcGISRuntime.Tasks.Offline;
 using Esri.ArcGISRuntime.Symbology;
 using System.Threading;
-using System.Threading.Tasks;
 using System.Windows;
 using System;
 using System.Windows.Media;
 using Esri.ArcGISRuntime.UI;
 using System.Collections.Generic;
 using System.Xml;
-using System.Text;
-using System.IO;
-using System.Linq;
-using System.Xml.Serialization;
-using Esri.ArcGISRuntime;
 
 namespace WpfControlLibrary
 {
@@ -30,8 +24,9 @@ namespace WpfControlLibrary
         private const string basemapUrl = "http://sampleserver6.arcgisonline.com/arcgis/rest/services/World_Street_Map/MapServer";
         private const string operationalUrl = "http://sampleserver6.arcgisonline.com/arcgis/rest/services/Sync/SaveTheBaySync/FeatureServer/0";
 
-        private string localTileCachePath;
-        private string localGeodatabasePath;
+        private string _localTileCachePath;
+
+        private string _localGeodatabasePath;
 
         // Graphics overlay to host graphics
         private GraphicsOverlay _polygonOverlay;
@@ -96,7 +91,15 @@ namespace WpfControlLibrary
 
         private void DataOptionChecked(object sender, RoutedEventArgs e)
         {
-
+            MyMapView.Map.Basemap.BaseLayers.Clear();
+            if (UseOnlineDataOption.IsChecked == true)
+            {
+                TryLoadOnlineLayers();
+            }
+            else // offline
+            {
+                TryLoadLocalLayers();
+            }
         }
 
         private async void GetTiles(object sender, RoutedEventArgs routedEventArgs)
@@ -121,7 +124,7 @@ namespace WpfControlLibrary
                 var exportTileCacheParams =  exportTilesTask.CreateDefaultExportTileCacheParametersAsync(MyMapView.VisibleArea, 6000000.0, 1.0).Result;
              
                 // download the tile package to the app's local folder
-                var outFolder = System.AppDomain.CurrentDomain.BaseDirectory;
+                var outFolder = AppDomain.CurrentDomain.BaseDirectory;
 
                 var job =  exportTilesTask.ExportTileCache(exportTileCacheParams, outFolder + "asdf.tpk" );
                 job.JobChanged += (s, e) =>
@@ -159,6 +162,7 @@ namespace WpfControlLibrary
                 };
                // report changes in the job status
                 var result = await job.GetResultAsync();
+                _localTileCachePath = result.Path;
             }
             catch (Exception exp)
             {
@@ -169,7 +173,7 @@ namespace WpfControlLibrary
             {
                 // reset the progress indicator
                 StatusProgressBar.Value = 0;
-                StatusMessagesList.Items.Add(string.Format("Local tiles created at: {0}", this.localTileCachePath));
+                StatusMessagesList.Items.Add(string.Format("Local tiles created at: {0}", _localTileCachePath));
             }
         }
 
@@ -184,6 +188,30 @@ namespace WpfControlLibrary
         private async void GetFeatures(object sender, RoutedEventArgs e)
         {
 
+        }
+
+        private async void TryLoadLocalLayers()
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(_localTileCachePath))
+                {
+                    throw new Exception("Local features do not yet exist. Please generate them first.");
+                }
+
+                if (string.IsNullOrEmpty(_localTileCachePath))
+                {
+                    throw new Exception("Local tiles do not yet exist. Please generate them first.");
+                }
+                var basemapLayer = new ArcGISTiledLayer(new Uri(_localTileCachePath));
+                await basemapLayer.LoadAsync();
+                MyMapView.Map.Basemap.BaseLayers.Add(basemapLayer);
+            }
+            catch (Exception exp)
+            {
+                MessageBox.Show("Unable to load local layers: " + exp.Message, "Load Layers");
+
+            }
         }
 
         private async void TryLoadOnlineLayers()
