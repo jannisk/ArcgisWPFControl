@@ -13,6 +13,7 @@ using System;
 using System.Windows.Media;
 using Esri.ArcGISRuntime.UI;
 using System.Collections.Generic;
+using System.Windows.Input;
 using System.Xml;
 using Esri.ArcGISRuntime;
 using Esri.ArcGISRuntime.Rasters;
@@ -363,31 +364,8 @@ namespace WpfControlLibrary
         /// <param name="e"></param>
         private async void OnSketchButtonClick(object sender, RoutedEventArgs e)
         {
-            _enabledSketching = true;
-            try
-            {
-                var fillSymbol = new SimpleFillSymbol(SimpleFillSymbolStyle.Cross, Colors.Black, new SimpleLineSymbol(SimpleLineSymbolStyle.Solid, Colors.Black, 1));
-
-                var aStyle = new SketchStyle();
-                aStyle.FillSymbol = fillSymbol;
-                MyMapView.SketchEditor.Style = aStyle;
-                var  geometry = await MyMapView.SketchEditor.StartAsync(SketchCreationMode.Circle, false);
-                GraphicsOverlay graphicsOverlay;
-                graphicsOverlay = new GraphicsOverlay();
-                MyMapView.GraphicsOverlays.Add(graphicsOverlay);
-                //graphicsOverlay = MyMapView.GraphicsOverlays[0];
-                //var outlineSymbol = new SimpleLineSymbol(SimpleLineSymbolStyle.Solid, Colors.Black, 1.0);
-                //var line = new Graphic(geometry, outlineSymbol);
-                //var markerSymbol =  new SimpleMarkerSymbol(SimpleMarkerSymbolStyle.Square, Colors.AliceBlue, 12);
-                //var aPoint = new Graphic(geometry, markerSymbol);
-                var aGraphic = new Graphic(geometry, fillSymbol);
-                graphicsOverlay.Graphics.Add(aGraphic);
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show(ex.Message, "ERROR", MessageBoxButton.OK, MessageBoxImage.Error);
-                throw;
-            }
+            _enabledSketching = !_enabledSketching;
+          
 
         }
 
@@ -442,6 +420,35 @@ namespace WpfControlLibrary
             catch (Exception ex)
             {
                 MessageBox.Show("Error: Could not read file from disk. Original error: " + ex.Message);
+            }
+        }
+
+        private async void OnMapViewMouseDown(object sender, MouseButtonEventArgs e)
+        {
+            if (!_enabledSketching) return;
+            try
+            {
+                var fillSymbol = new SimpleFillSymbol(SimpleFillSymbolStyle.Null, Colors.Black, new SimpleLineSymbol(SimpleLineSymbolStyle.Solid, Colors.Black, 1));
+
+                var aStyle = new SketchStyle { FillSymbol = fillSymbol };
+                aStyle.VertexSymbol = new SimpleMarkerSymbol(SimpleMarkerSymbolStyle.X, Colors.Red, 1);
+                MyMapView.Focus();
+                MyMapView.SketchEditor = new SketchEditor { Style = aStyle };
+                var geometry = await MyMapView.SketchEditor.StartAsync(SketchCreationMode.Polygon, false);
+                //var graphicsOverlay = new GraphicsOverlay();
+                //MyMapView.GraphicsOverlays.Add(graphicsOverlay);
+                ////graphicsOverlay = MyMapView.GraphicsOverlays[0];
+                ////var outlineSymbol = new SimpleLineSymbol(SimpleLineSymbolStyle.Solid, Colors.Black, 1.0);
+                ////var line = new Graphic(geometry, outlineSymbol);
+                ////var markerSymbol =  new SimpleMarkerSymbol(SimpleMarkerSymbolStyle.Square, Colors.AliceBlue, 12);
+                ////var aPoint = new Graphic(geometry, markerSymbol);
+                //var aGraphic = new Graphic(geometry, fillSymbol);
+                //graphicsOverlay.Graphics.Add(aGraphic);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(ex.Message, "ERROR", MessageBoxButton.OK, MessageBoxImage.Error);
+                throw;
             }
         }
     }

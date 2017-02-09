@@ -28,7 +28,7 @@
                 </ToolBar>
             </DockPanel>
         </StackPanel>
-        <esri:MapView x:Name="MyMapView" Grid.Row="1"/>
+        <esri:MapView x:Name="MyMapView" Grid.Row="1" MouseDown="OnMapViewMouseDown"/>
         <Canvas
 	Width="370" Height="197"
 	HorizontalAlignment="Left" VerticalAlignment="Bottom"
