@@ -71,7 +71,9 @@
     <Compile Include="MapWindow.xaml.cs">
       <DependentUpon>MapWindow.xaml</DependentUpon>
     </Compile>
+    <Compile Include="MilFeaturesManager.cs" />
     <Compile Include="Samples\AddGraphicsRenderer.xaml.cs" />
+    <Compile Include="Utilities.cs" />
     <Compile Include="WpfInputControl.xaml.cs">
       <DependentUpon>WpfInputControl.xaml</DependentUpon>
       <SubType>Code</SubType>

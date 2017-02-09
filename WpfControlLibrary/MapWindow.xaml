@@ -18,10 +18,12 @@
                 <Label x:Name="MyLabel" DockPanel.Dock="Right">
                 </Label>
                 
-                <ToolBar x:Name="toolBar" Height="30" VerticalAlignment="Top" Width="224" HorizontalAlignment="Left">
+                <ToolBar x:Name="toolBar" Height="30" VerticalAlignment="Top"  HorizontalAlignment="Left">
                     <ToolBarPanel Height="30" VerticalAlignment="Top" Orientation="Horizontal">
-                        <Button x:Name="button" Content="Sketch" HorizontalAlignment="Left" Width="100" Click="button_Click"/>
+                        <Button x:Name="button" Content="Sketch" HorizontalAlignment="Left" Width="100" Click="OnSketchButtonClick"/>
                         <Button x:Name="button1" Content="Add Map" Width="74"/>
+                        <Button x:Name="btnAddRaster" Content="Add Raster" Width="74"
+                        Click="OnRasterButtonClick" />
                     </ToolBarPanel>
                 </ToolBar>
             </DockPanel>

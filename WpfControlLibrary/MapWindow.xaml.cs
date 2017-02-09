@@ -6,6 +6,7 @@ using Esri.ArcGISRuntime.Http;
 using Esri.ArcGISRuntime.UI.Controls;
 using Esri.ArcGISRuntime.Tasks.Offline;
 using Esri.ArcGISRuntime.Symbology;
+
 using System.Threading;
 using System.Windows;
 using System;
@@ -13,6 +14,9 @@ using System.Windows.Media;
 using Esri.ArcGISRuntime.UI;
 using System.Collections.Generic;
 using System.Xml;
+using Esri.ArcGISRuntime;
+using Esri.ArcGISRuntime.Rasters;
+using Microsoft.Win32;
 
 namespace WpfControlLibrary
 {
@@ -21,8 +25,10 @@ namespace WpfControlLibrary
     /// </summary>
     public partial class MapWindow : UserControl
     {
-        private const string basemapUrl = "http://sampleserver6.arcgisonline.com/arcgis/rest/services/World_Street_Map/MapServer";
-        private const string operationalUrl = "http://sampleserver6.arcgisonline.com/arcgis/rest/services/Sync/SaveTheBaySync/FeatureServer/0";
+        private const string BasemapUrl = "http://sampleserver6.arcgisonline.com/arcgis/rest/services/World_Street_Map/MapServer";
+        private const string OperationalUrl = "http://sampleserver6.arcgisonline.com/arcgis/rest/services/Sync/SaveTheBaySync/FeatureServer/0";
+
+        private const string _emptyMapPackage = @"..\..\..\Samples-Data\distribution.mpk";
 
         private string _localTileCachePath;
 
@@ -30,21 +36,31 @@ namespace WpfControlLibrary
 
         // Graphics overlay to host graphics
         private GraphicsOverlay _polygonOverlay;
+
         private GraphicsOverlay _situationalOverlay;
 
         private CancellationTokenSource _cancellationTokenSource;
         private bool _enabledSketching;
+        private readonly MilFeaturesManager _milFeaturesManager;
 
         public MapWindow()
         {
             InitializeComponent();
             Initialize();
+            _milFeaturesManager = new MilFeaturesManager(this);
+        }
+
+        public MilFeaturesManager MilFeaturesManager
+        {
+            get { return _milFeaturesManager; }
         }
 
         private void Initialize()
         {
-            // Create new Map with basemap
+            var exePath = Utilities.ExePath();
 
+            // Create new Map with basemap
+            _localTileCachePath = exePath + @"\asdf.tpk";
             MyMapView.NavigationCompleted += (s, e) => { GenerateLocalTilesButton.IsEnabled = MyMapView.MapScale < 6000000; };
             MyMapView.Loaded += MyMapView_Loaded;
 
@@ -53,6 +69,7 @@ namespace WpfControlLibrary
         private  async void MyMapView_Loaded(object sender, RoutedEventArgs e)
         {
             TryLoadOnlineLayers();
+            //AddRasterData();
             MyMapView.ViewpointChanged += MyMapView_ViewpointChanged;
             MyMapView.GeoViewTapped += OnGeoViewTapped;
         }
@@ -79,13 +96,13 @@ namespace WpfControlLibrary
             }
         }
 
-        private void MyMapView_ViewpointChanged(object sender, EventArgs e)
+        private async void MyMapView_ViewpointChanged(object sender, EventArgs e)
         {
             // Unhook the event
             MyMapView.ViewpointChanged -= MyMapView_ViewpointChanged;
-
-            CreateOverlay();
-            CreateMilOverlay();
+            //CreateOverlay();
+            _situationalOverlay = await _milFeaturesManager.CreateMilOverlay();
+            MyMapView.GraphicsOverlays.Add(_situationalOverlay);
 
         }
 
@@ -119,7 +136,7 @@ namespace WpfControlLibrary
                 var cancelToken = _cancellationTokenSource.Token;             
                
                 // create a new ExportTileCacheTask to generate the tiles
-                var exportTilesTask = ExportTileCacheTask.CreateAsync(new Uri(basemapUrl)).Result;
+                var exportTilesTask = ExportTileCacheTask.CreateAsync(new Uri(BasemapUrl)).Result;
                 //// define options for the new tiles (extent, scale levels, format
                 var exportTileCacheParams =  exportTilesTask.CreateDefaultExportTileCacheParametersAsync(MyMapView.VisibleArea, 6000000.0, 1.0).Result;
              
@@ -214,16 +231,28 @@ namespace WpfControlLibrary
             }
         }
 
+        private void AddRasterData()
+        {
+           // Map myMap = new Map(SpatialReferences.Wgs84);
+           // MyMapView.Map = myMap;
+
+            //AddLayer(@"D:\Data\map500k\ALEXADRIAN.tif");
+            AddLayer(@"D:\Data\satellite\001.bip");
+
+        }
         private async void TryLoadOnlineLayers()
         {
             try
             {
 
-                Map myMap = new Map(SpatialReferences.WebMercator);
+                var myMap = new Map(SpatialReferences.WebMercator);
+                
+                // Assign the map to the MapView
+                MyMapView.Map = myMap;
 
                 // create an online tiled map service layer, an online feature layer
-                var basemapLayer = new ArcGISTiledLayer(new Uri(basemapUrl));
-                var operationalLayer = new FeatureLayer(new Uri(operationalUrl));
+                var basemapLayer = new ArcGISTiledLayer(new Uri(BasemapUrl));
+                var operationalLayer = new FeatureLayer(new Uri(OperationalUrl));
            
                 // give the feature layer an ID so it can be found later
                 operationalLayer.Id = "Sightings";
@@ -233,19 +262,13 @@ namespace WpfControlLibrary
                 await basemapLayer.LoadAsync();
                 await operationalLayer.LoadAsync();
 
-                //// see if there was an exception when initializing the layers, if so throw an exception
-                //if (basemapLayer.InitializationException != null ||
-                //    operationalLayer.InitializationException != null)
-                //{
-                //    unable to load one or more of the layers, throw an exception
-                //    throw new Exception("Could not initialize layers");
-                //}
-
-             
-
-                // Assign the map to the MapView
-                MyMapView.Map = myMap;
-
+                // see if there was an exception when initializing the layers, if so throw an exception
+                if (basemapLayer.LoadStatus == LoadStatus.FailedToLoad ||
+                    operationalLayer.LoadStatus == LoadStatus.FailedToLoad)
+                {
+                    //unable to load one or more of the layers, throw an exception
+                    throw new Exception("Could not initialize layers");
+                }
                 // add layers
                 MyMapView.Map.Basemap.BaseLayers.Add(basemapLayer);
                 MyMapView.Map.OperationalLayers.Add(operationalLayer);
@@ -254,14 +277,14 @@ namespace WpfControlLibrary
             catch (ArcGISWebException arcGISExp)
             {
                 // token required?
-                MessageBox.Show("Unable to load online layers: credentials may be required", "Load Error");
+                MessageBox.Show("Unable to load online layers: credentials may be required", "Load Error: " + arcGISExp.Message);
 
 
             }
             catch (System.Net.Http.HttpRequestException httpExp)
             {
                 // not connected? server down? wrong URI?
-                MessageBox.Show("Unable to load online layers: check your connection and verify service URLs", "Load Error");
+                MessageBox.Show("Unable to load online layers: check your connection and verify service URLs", "Load Error: " + httpExp.Message);
 
 
             }
@@ -327,79 +350,6 @@ namespace WpfControlLibrary
 
         }
 
-        /// <summary>
-        /// Creates an overlay with mil symbols
-        /// </summary>
-        /// <remarks>
-        /// ATTENTION Multipoint symbols throw exception they 
-        /// do not appear in Mapview
-        /// </remarks>
-        private async void CreateMilOverlay()
-
-        {
-            // Creating graphics overlay
-            _situationalOverlay = new GraphicsOverlay(); 
-            var symbolStyle = await DictionarySymbolStyle.OpenAsync("mil2525d", @"C:\Users\jkotsis\Documents\Visual Studio 2015\Projects\WPF-WinForms\WFControlLibrary\WFHost\Resources\mil2525d.stylx");
-
-            var messages = ParseMessages();
-            //var symfieldOverides = new Dictionary<string, string>();
-            //symfieldOverides.Add("sidc", "sic");
-            foreach (var attributes in messages)
-            {
-                _situationalOverlay.Graphics.Add(CreateGraphic(attributes));
-            }
-            var fieldNames = symbolStyle.SymbologyFieldNames;
-            var textFieldNames = symbolStyle.TextFieldNames;
-            DictionaryRenderer renderer = new DictionaryRenderer(symbolStyle); //, symfieldOverides, new Dictionary<string, string>() );
-            _situationalOverlay.Renderer = renderer;
-            MyMapView.GraphicsOverlays.Add(_situationalOverlay);
-        }
-
-        private Graphic CreateGraphic(Dictionary<string, object> attributes)
-        {
-            // get spatial reference
-            int wkid = int.Parse((string)attributes["_wkid"]);
-            SpatialReference sr = SpatialReference.Create(wkid);
-
-            // get points from coordinates' string
-            var points = new Esri.ArcGISRuntime.Geometry.PointCollection(sr);
-
-            var controlPoints= ((string)attributes["_control_points"]).Split(';');
-            foreach(var controlPoint in controlPoints)
-            {
-                var coordinates = controlPoint.Split(',');
-                var mapPoint = new MapPoint(double.Parse(coordinates[0]), double.Parse(coordinates[1]), 0, sr);
-                points.Add(mapPoint);
-
-            }
-            return new Graphic(new Multipoint(points), attributes);
-        }
-
-        private List<Dictionary<string, object>> ParseMessages()
-        {
-            var messages = new List<Dictionary<string, object>>();
-            new HashSet<string>();
-
-            var xmlDoc = new XmlDocument();
-            //Next xml contains only single point symbols
-            //TODO: Multipoint symbols throw when drawing in the canvas 
-            //
-            xmlDoc.LoadXml(Properties.Resources.Mil2525DUnitMessages);
-            foreach (XmlNode nd in xmlDoc.DocumentElement.SelectNodes("message"))
-            {
-                var message = new Dictionary<string, object>();
-                foreach(XmlNode aNode in nd.ChildNodes)
-                {
-                    System.Diagnostics.Debug.Print(aNode.Name + ": "  + aNode.InnerText);
-                    message.Add(aNode.Name, aNode.InnerText);
-                }
-                messages.Add(message);
-            }
-           
-            return messages;
-
-        }
-   
         private void MySlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
 
@@ -411,7 +361,7 @@ namespace WpfControlLibrary
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private async void button_Click(object sender, RoutedEventArgs e)
+        private async void OnSketchButtonClick(object sender, RoutedEventArgs e)
         {
             _enabledSketching = true;
             try
@@ -439,6 +389,60 @@ namespace WpfControlLibrary
                 throw;
             }
 
+        }
+
+        private async void OnRasterButtonClick(object sender, RoutedEventArgs e)
+        {
+            OpenFileDialog openFileDialog = new OpenFileDialog
+            {
+                Filter = "Image files (*.bmp,*.png,*.sid,*.tif)|*.bmp;*.png;*.sid;*.tif;",
+                RestoreDirectory = true,
+                Multiselect = true
+            };
+            if (openFileDialog.ShowDialog() == true)
+            {
+                AddLayer(openFileDialog.FileName);
+            }
+        }
+
+        private async void AddLayer(string path)
+        {
+            try
+            {
+
+                // Call the add dataset method with workspace type, parent directory path and actual file names
+                // Create and initialize a new LocalMapService instance.
+                var myRaster = new Raster(path);
+                var newRasterLayer = new RasterLayer(myRaster);
+
+                await newRasterLayer.LoadAsync();
+                // add the layer to the map as a base layer or operational layer
+                 MyMapView.Map.Basemap.BaseLayers.Add(newRasterLayer);
+                //// Create and initialize new ArcGISLocalDynamicMapServiceLayer over the local service.
+                //var dynLayer = new ArcGISDynamicMapServiceLayer()
+                //{
+                //    ID = "Workspace: " + (new DirectoryInfo(directoryPath)).Name,
+                //    ServiceUri = localMapService.UrlMapService
+                //};
+                //await dynLayer.InitializeAsync();
+
+
+                //var dynLayer = new RasterLayer(path);
+                ////var dynLayer = await AddFileDatasetToDynamicMapServiceLayer(WorkspaceFactoryType.Raster,
+                ////    Path.GetDirectoryName(openFileDialog.FileName), new List<string>(openFileDialog.SafeFileNames));
+
+                //dynLayer.LoadAsync();
+                //// Add the dynamic map service layer to the map
+                //if (dynLayer != null)
+                //{
+                //    dynLayer.Name = "TIFF";
+                //    MyMapView.Map.Basemap.BaseLayers.Add(dynLayer);
+                //}
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Error: Could not read file from disk. Original error: " + ex.Message);
+            }
         }
     }
 }
